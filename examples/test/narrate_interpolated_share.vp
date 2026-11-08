@@ -1,0 +1,25 @@
+// SPDX-FileCopyrightText: © 2019-2026 Nadim Kobeissi <nadim@symbolic.software>
+// SPDX-FileCopyrightText: © 2026 Mounir IDRASSI <mounir.idrassi@amcrypto.jp>
+// SPDX-License-Identifier: GPL-3.0-only
+//
+// Expected: c1 at one session and at two (GitHub issue #51).
+//
+// threshold_secret_reveals_no_share.vp with s2 leaked beside k. Alone, k is
+// one point of the two-of-three line and fixes no share; with s2 it is two,
+// which give away s1. The trace must hand over both before recomposing s1:
+// an interpolated share once recorded k as its only ingredient, so the
+// trace never mentioned s2 and read as if s1 had been built from k.
+attacker[passive]
+principal Dealer[
+	generates k
+	s1, s2, s3 = THRESHOLD_SPLIT[2](k)
+	leaks k
+	leaks s2
+]
+Dealer -> Bob: [k]
+principal Bob[
+	_ = HASH(k)
+]
+queries[
+	confidentiality? s1
+]

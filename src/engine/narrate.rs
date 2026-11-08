@@ -449,11 +449,26 @@ impl<'a, 'b> Narrator<'a, 'b> {
 				self.subject(v),
 				self.list(from)
 			),
-			DerivationRecord::Recomposed { using, .. } => format!(
-				"Attacker recomposes {} from enough of its shares ({}).",
-				self.term(v, &[]),
-				self.list(using)
-			),
+			DerivationRecord::Recomposed { using } => {
+				let of = sharing_secret(v);
+				let (secret, shares): (Vec<Value>, Vec<Value>) = using
+					.iter()
+					.cloned()
+					.partition(|point| of.is_some_and(|secret| secret.equivalent(point, true)));
+				match secret.first() {
+					Some(secret) => format!(
+						"Attacker recomposes {} from {} and enough of its other shares ({}).",
+						self.term(v, &[]),
+						self.term(secret, &[]),
+						self.list(&shares)
+					),
+					None => format!(
+						"Attacker recomposes {} from enough of its shares ({}).",
+						self.term(v, &[]),
+						self.list(using)
+					),
+				}
+			}
 			DerivationRecord::Fragment { of } => format!(
 				"Attacker splits {} and takes {}.",
 				self.term(of, &[]),
@@ -1176,4 +1191,12 @@ fn recipient_contributed(c: &Constant, km: &ProtocolTrace, recipient: PrincipalI
 
 fn whole(member: &Value, plaintext: &Value) -> bool {
 	masked(member).is_some_and(|own| own.equivalent(plaintext, true))
+}
+
+fn sharing_secret(v: &Value) -> Option<&Value> {
+	let Value::Primitive(p) = v else {
+		return None;
+	};
+	p.arguments
+		.get(crate::primitive::recompose_rule(p.id)?.reveal)
 }

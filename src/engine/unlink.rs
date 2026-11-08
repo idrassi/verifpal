@@ -213,6 +213,21 @@ fn strongest(
 	[ta, tb]: [&[Tied]; 2],
 	valid: &dyn Fn(&Value, LinkKind) -> bool,
 ) -> Option<Link> {
+	let apart = |w: &Value| [av, bv].iter().any(|v| held_without(scope, w, v));
+	let rebuilt = |tied: &Tied, side: &[Tied]| {
+		!matches!(tied.tie, Tie::Built)
+			|| side
+				.iter()
+				.filter(|leaf| {
+					matches!(leaf.tie, Tie::Built)
+						&& match (&leaf.via, &tied.via) {
+							(None, None) => true,
+							(Some(x), Some(y)) => x.equivalent(y, true),
+							_ => false,
+						}
+				})
+				.all(|leaf| apart(&leaf.term))
+	};
 	let mut best: Option<(u8, Link)> = None;
 	for a in ta {
 		for b in tb {
@@ -226,11 +241,11 @@ fn strongest(
 			let joined = match (a.tie, b.tie) {
 				(Tie::Itself, Tie::Itself) => Some((0, LinkKind::ObservedEquality)),
 				(Tie::Key(i), Tie::Key(j)) if i == j => Some((1, LinkKind::IdentifyingCheck(i))),
-				(Tie::Built, Tie::Built)
-					if !via && fresh && [av, bv].iter().any(|v| held_without(scope, w, v)) =>
-				{
+				(Tie::Built, Tie::Built) if !via && fresh && apart(w) => {
 					Some((2, LinkKind::SharedSecret))
 				}
+				(Tie::Built, Tie::Built) => None,
+				_ if !rebuilt(a, ta) || !rebuilt(b, tb) => None,
 				(Tie::Itself, Tie::Built) | (Tie::Built, Tie::Itself) => {
 					Some((3, LinkKind::SharedSecret))
 				}

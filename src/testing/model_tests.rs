@@ -5920,3 +5920,61 @@ fn test_search_late_disclosure_is_no_source() {
 		run_model_sessions(model, 2, "a1");
 	}
 }
+
+#[test]
+fn test_search_merge_interpolated_share() {
+	for sessions in [1, 2] {
+		run_model_sessions("search_merge_interpolated_share.vp", sessions, "c1");
+	}
+	run_model_sessions("search_merge_interpolated_share_same_oracle.vp", 1, "c0");
+	run_model_sessions("search_merge_interpolated_share_same_oracle.vp", 2, "c1");
+}
+
+#[test]
+fn test_unlink_opened_weak_rebuild() {
+	for sessions in [1, 2] {
+		run_model_sessions("unlink_opened_weak_rebuild.vp", sessions, "u1");
+	}
+}
+
+#[test]
+fn an_interpolated_share_is_narrated_from_every_point_it_needs() {
+	let trace = |model: &str, sessions: u8| {
+		let (results, code) =
+			crate::verify::verify_with_sessions(&format!("examples/test/{model}"), sessions)
+				.expect("verify");
+		assert_eq!(code, "c1", "{model} at {sessions} sessions");
+		results[0].summary.clone()
+	};
+	for sessions in [1, 2] {
+		let passive = trace("narrate_interpolated_share.vp", sessions);
+		let line = |text: &str| passive.lines().position(|line| line.contains(text));
+		let (Some(secret), Some(share), Some(recomposed)) = (
+			line("Attacker is handed k by a leaks declaration in Dealer."),
+			line("Attacker is handed s2 by a leaks declaration in Dealer."),
+			line("Attacker recomposes s1 from k and enough of its other shares (s2)."),
+		) else {
+			panic!(
+				"k alone fixes no share, so the trace must hand over s2 as well and recompose \
+				 s1 from both. Narrated: {passive}"
+			);
+		};
+		assert!(
+			secret < recomposed && share < recomposed && !passive.contains("constructs s1"),
+			"s1 is recomposed once k and s2 are disclosed, never built from k. Narrated: \
+			 {passive}"
+		);
+		let active = trace("search_merge_interpolated_share.vp", sessions);
+		assert!(
+			active.contains("Attacker replaces xb (sent by Alice to Bob) with wrapped_secret.")
+				&& active
+					.contains("Attacker replaces xc (sent by Alice to Carol) with wrapped_first.")
+				&& active.contains(
+					"Attacker recomposes second from secret and enough of its other shares \
+					 (first)."
+				),
+			"one execution makes Bob leak secret and Carol leak first, and second is \
+			 recomposed from both. Narrated: {active}"
+		);
+	}
+}

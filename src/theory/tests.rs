@@ -505,6 +505,50 @@ fn recompose_counts_distinct_held_shares_against_the_threshold() {
 	assert!(can_recompose(&split(3), &wrong_threshold).is_none());
 }
 
+#[test]
+fn an_interpolated_share_records_every_point_it_needs() {
+	let secret = make_constant("isp_secret");
+	let share = |output: usize| {
+		Value::Primitive(Arc::new(
+			Primitive::new(PRIM_THRESHOLD_SPLIT, vec![secret.clone()], output).with(
+				|application| {
+					application.threshold = 3;
+					application.instance = test_value_id("isp_sharing");
+				},
+			),
+		))
+	};
+	let Value::Primitive(wanted) = share(0) else {
+		unreachable!("a share is an application")
+	};
+	let capabilities = CapabilityIndex::default();
+	let points = |attacker: &AttackerState| {
+		can_reconstruct_primitive(&wanted, &capabilities, attacker)
+			.map(|record| record.ingredients().cloned().collect::<Vec<Value>>())
+	};
+	let exactly = |points: Option<Vec<Value>>, expected: &[Value]| {
+		let points = points.expect("enough points of the sharing are held");
+		points.len() == expected.len()
+			&& expected
+				.iter()
+				.all(|v| points.iter().any(|p| p.equivalent(v, true)))
+	};
+	let with_secret = make_attacker_state(vec![secret.clone(), share(1), share(2)]);
+	assert!(
+		exactly(points(&with_secret), &[secret.clone(), share(1), share(2)]),
+		"the secret and two other shares fix the three-of-n sharing; a record listing the \
+		 secret alone lets a merge or a trace drop the shares it needs"
+	);
+	let inputs = KnowledgeInputs::new(&capabilities, &with_secret)
+		.of_value(&share(0))
+		.expect("the share is obtainable");
+	assert_eq!(inputs.len(), 3);
+	let short = make_attacker_state(vec![secret.clone(), share(1)]);
+	assert!(points(&short).is_none());
+	let shares = make_attacker_state(vec![share(1), share(2), share(3)]);
+	assert!(exactly(points(&shares), &[share(1), share(2), share(3)]));
+}
+
 fn tsh_share(secret: &Value, t: usize, output: usize) -> Value {
 	let p = Primitive::new(PRIM_THRESHOLD_SPLIT, vec![secret.clone()], output)
 		.with(|application| application.threshold = t);
